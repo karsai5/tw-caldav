@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"karsai5/tw-caldav/internal/caldav"
 	"karsai5/tw-caldav/internal/task"
-	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -24,7 +23,6 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		slog.Debug("env variables", "url", viper.GetString("url"), "user", viper.GetString("user"))
 		remote, err := caldav.NewClient(viper.GetString("url"), viper.GetString("user"), viper.GetString("pass"))
 		if err != nil {
 			panic(err)

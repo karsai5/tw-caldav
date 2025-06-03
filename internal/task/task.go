@@ -8,6 +8,11 @@ type Task interface {
 	Due() *time.Time
 	Priority() Priority
 	Tags() []string
+	LastModified() time.Time
+	LastSynced() *time.Time
+
+	RemotePath() *string
+	LocalId() *string
 }
 
 type Priority int8

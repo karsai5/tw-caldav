@@ -102,15 +102,49 @@ type Todo struct {
 	Path           string
 }
 
-// Due implements task.Task.
-func (t *Todo) Due() *time.Time {
-	due := t.todoComponent.Props.Get("DUE")
-	if due == nil {
+// LocalId implements task.Task.
+func (t *Todo) LocalId() *string {
+	return nil
+}
+
+// RemotePath implements task.Task.
+func (t *Todo) RemotePath() *string {
+	return &t.calendarObject.Path
+}
+
+// LastModified implements task.Task.
+func (t *Todo) LastModified() time.Time {
+	prop := t.todoComponent.Props.Get("LAST-MODIFIED")
+	time, err := prop.DateTime(&time.Location{})
+	if err != nil {
+		slog.Error("Could not parse time: %s", prop.Value)
+	}
+	return time
+}
+
+// LastSynced implements task.Task.
+func (t *Todo) LastSynced() *time.Time {
+	prop := t.todoComponent.Props.Get("TW-LAST-SYNCED")
+	if prop == nil {
 		return nil
 	}
-	time, err := due.DateTime(&time.Location{})
+	time, err := prop.DateTime(&time.Location{})
 	if err != nil {
-		slog.Error("Could not parse time: %s", due.Value)
+		slog.Error("Could not parse time: %s", prop.Value)
+		return nil
+	}
+	return &time
+}
+
+// Due implements task.Task.
+func (t *Todo) Due() *time.Time {
+	prop := t.todoComponent.Props.Get("DUE")
+	if prop == nil {
+		return nil
+	}
+	time, err := prop.DateTime(&time.Location{})
+	if err != nil {
+		slog.Error("Could not parse time: %s", prop.Value)
 	}
 	return &time
 }

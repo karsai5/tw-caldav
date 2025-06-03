@@ -16,14 +16,26 @@ func DebugTask(t Task) {
 func PrintTable(tasks []Task) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
-	tab.AppendHeader(table.Row{"desc", "proj", "due", "priority", "tags"})
+	tab.AppendHeader(table.Row{"desc", "proj", "due", "priority", "tags", "last modified", "last synced", "path", "id"})
 	for _, t := range tasks {
 		tags := strings.Join(t.Tags(), ", ")
+
 		desc := t.Description()
 		if len(desc) > 30 {
 			desc = desc[:27] + "..."
 		}
-		tab.AppendRow(table.Row{desc, t.Project(), t.Due(), t.Priority(), tags})
+
+		remotePath := ""
+		if t.RemotePath() != nil {
+			remotePath = "✔️"
+		}
+
+		localId := ""
+		if t.LocalId() != nil {
+			localId = "✔️"
+		}
+
+		tab.AppendRow(table.Row{desc, t.Project(), t.Due(), t.Priority(), tags, t.LastModified(), t.LastSynced(), remotePath, localId})
 	}
 	tab.Render()
 }

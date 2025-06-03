@@ -1,0 +1,7 @@
+data.location=~/.task-dev
+
+uda.lastsync.type=date
+uda.lastsync.label=Last Synced
+
+uda.remotepath.type=string
+uda.remotepath.label=Remote Path

@@ -65,14 +65,6 @@ func (cd *calDav) GetAllTodos() (todos []*Todo, err error) {
 	return todos, nil
 }
 
-func GetArray(todos []*Todo) []task.Task {
-	arr := make([]task.Task, len(todos))
-	for i, t := range todos {
-		arr[i] = t
-	}
-	return arr
-}
-
 func createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, error) {
 	if cal == nil {
 		return nil, fmt.Errorf("cal can't be nil")

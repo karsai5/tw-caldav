@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"karsai5/tw-caldav/internal/caldav"
 	"karsai5/tw-caldav/internal/task"
+	"karsai5/tw-caldav/internal/tw"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,8 +35,29 @@ to quickly create a Cobra application.`,
 		}
 
 		fmt.Println("REMOTE TASKS")
-		task.PrintTable(caldav.GetArray(remoteTasks))
+		task.PrintTable(getArrayFromRemoteTasks(remoteTasks))
+
+		local := tw.Taskwarrior{}
+		localTasks, err := local.GetAllTasks()
+		fmt.Println("LOCAL TASKS")
+		task.PrintTable(getArrayFromLocalTasks(localTasks))
 	},
+}
+
+func getArrayFromLocalTasks(todos []*tw.Task) []task.Task {
+	arr := make([]task.Task, len(todos))
+	for i, t := range todos {
+		arr[i] = t
+	}
+	return arr
+}
+
+func getArrayFromRemoteTasks(todos []*caldav.Todo) []task.Task {
+	arr := make([]task.Task, len(todos))
+	for i, t := range todos {
+		arr[i] = t
+	}
+	return arr
 }
 
 func init() {

@@ -3,7 +3,7 @@ watch:
 	nodemon --exec go run tw-caldav.go sync --signal SIGTERM
 
 task-dev-mode:
-	echo "data.location=~/.task-dev" > ~/.taskrc
+	cp ./taskrc ~/.taskrc
 
 task-normal-mode:
 	yadm alt

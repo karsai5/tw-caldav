@@ -2,7 +2,13 @@ package caldav
 
 import (
 	"context"
+	"fmt"
+	"karsai5/tw-caldav/internal/task"
+	"log/slog"
+	"strings"
+	"time"
 
+	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 )
@@ -25,22 +31,127 @@ type calDav struct {
 	Client *caldav.Client
 }
 
-func (cd *calDav) GetTodos(calendar string) ([]caldav.CalendarObject, error) {
+func (cd *calDav) GetTodosForCalendar(calendarPath string) ([]caldav.CalendarObject, error) {
 	query := &caldav.CalendarQuery{
 		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
 		CompFilter:  caldav.CompFilter{Name: "VCALENDAR", Comps: []caldav.CompFilter{{Name: "VTODO"}}},
 	}
-	objects, err := cd.Client.QueryCalendar(context.TODO(), calendar, query)
+	objects, err := cd.Client.QueryCalendar(context.TODO(), calendarPath, query)
 	if err != nil {
 		return []caldav.CalendarObject{}, err
 	}
 	return objects, nil
 }
 
-func (cd *calDav) GetCalendar() (caldav.Calendar, error) {
-	cals, err := cd.Client.FindCalendars(context.TODO(), "")
+func (cd *calDav) GetAllTodos() (todos []*Todo, err error) {
+	calendars, err := cd.Client.FindCalendars(context.TODO(), "")
 	if err != nil {
-		return caldav.Calendar{}, err
+		return todos, fmt.Errorf("While getting calendars: %w", err)
 	}
-	return cals[0], nil
+
+	for _, cal := range calendars {
+		calTodos, err := cd.GetTodosForCalendar(cal.Path)
+		if err != nil {
+			return todos, fmt.Errorf("While getting todos for calendar: %w", err)
+		}
+		for _, calTodo := range calTodos {
+			todo, err := createTodo(&cal, &calTodo)
+			if err != nil {
+				return todos, fmt.Errorf("While creating todo: %w", err)
+			}
+			todos = append(todos, todo)
+		}
+	}
+	return todos, nil
+}
+
+func GetArray(todos []*Todo) []task.Task {
+	arr := make([]task.Task, len(todos))
+	for i, t := range todos {
+		arr[i] = t
+	}
+	return arr
+}
+
+func createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, error) {
+	if cal == nil {
+		return nil, fmt.Errorf("cal can't be nil")
+	}
+	if calObj == nil {
+		return nil, fmt.Errorf("calObj can't be nil")
+	}
+
+	if len(calObj.Data.Children) > 1 {
+		return nil, fmt.Errorf("Incorrect number of children for calObj, should be 1, found %d", len(calObj.Data.Children))
+	}
+
+	todo := Todo{
+		calendar:       cal,
+		calendarObject: calObj,
+		todoComponent:  calObj.Data.Children[0],
+		Path:           calObj.Path,
+	}
+
+	return &todo, nil
+}
+
+type Todo struct {
+	calendar       *caldav.Calendar
+	calendarObject *caldav.CalendarObject
+	todoComponent  *ical.Component
+	Path           string
+}
+
+// Due implements task.Task.
+func (t *Todo) Due() *time.Time {
+	due := t.todoComponent.Props.Get("DUE")
+	if due == nil {
+		return nil
+	}
+	time, err := due.DateTime(&time.Location{})
+	if err != nil {
+		slog.Error("Could not parse time: %s", due.Value)
+	}
+	return &time
+}
+
+// Priority implements task.Task.
+func (t *Todo) Priority() task.Priority {
+	prop := t.todoComponent.Props.Get("PRIORITY")
+	if prop == nil {
+		return 0
+	}
+	priority, err := prop.Int()
+	if err != nil {
+		slog.Error("Could not pass priority: %s", prop.Value)
+	}
+
+	return task.Priority(priority)
+}
+
+// Project implements task.Task.
+func (t *Todo) Project() string {
+	return t.calendar.Name
+}
+
+// Tags implements task.Task.
+func (t *Todo) Tags() []string {
+	prop := t.todoComponent.Props.Get("CATEGORIES")
+	if prop == nil {
+		return []string{}
+	}
+	tags := strings.Split(prop.Value, ",")
+	return tags
+}
+
+func (t *Todo) Description() string {
+	return t.GetStringProp("SUMMARY")
+}
+
+func (t *Todo) GetStringProp(key string) string {
+	prop := t.todoComponent.Props.Get(key)
+	if prop == nil {
+		return ""
+	}
+	return prop.Value
 }

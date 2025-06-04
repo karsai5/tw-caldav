@@ -8,6 +8,7 @@ import (
 	"karsai5/tw-caldav/internal/caldav"
 	"karsai5/tw-caldav/internal/task"
 	"karsai5/tw-caldav/internal/tw"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -28,8 +29,13 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			panic(err)
 		}
-
 		remoteTasks, err := remote.GetAllTodos()
+		if err != nil {
+			panic(err)
+		}
+
+		local := tw.Taskwarrior{}
+		localTasks, err := local.GetAllTasks()
 		if err != nil {
 			panic(err)
 		}
@@ -37,10 +43,16 @@ to quickly create a Cobra application.`,
 		fmt.Println("REMOTE TASKS")
 		task.PrintTable(getArrayFromRemoteTasks(remoteTasks))
 
-		local := tw.Taskwarrior{}
-		localTasks, err := local.GetAllTasks()
 		fmt.Println("LOCAL TASKS")
 		task.PrintTable(getArrayFromLocalTasks(localTasks))
+
+		for _, t := range remoteTasks {
+			if t.LocalId() != nil {
+				continue
+			}
+			slog.Info("Creating remote task locally", "desc", t.Description())
+		}
+
 	},
 }
 

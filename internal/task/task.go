@@ -13,6 +13,23 @@ type Task interface {
 
 	RemotePath() *string
 	LocalId() *string
+
+	Status() Status
+}
+
+type Status int8
+
+func (s Status) String() string {
+	switch s {
+	case StatusComplete:
+		return "complete"
+	case StatusPending:
+		return "pending"
+	case StatusDeleted:
+		return "deleted"
+	default:
+		return ""
+	}
 }
 
 type Priority int8
@@ -31,8 +48,15 @@ func (p Priority) String() string {
 }
 
 const (
-	Unset  Priority = 0
-	Low             = 9
-	Medium          = 5
-	High            = 1
+	PriorityUnset  Priority = 0
+	PriorityLow             = 9
+	PriorityMedium          = 5
+	PriorityHigh            = 1
+)
+
+const (
+	StatusUnset Status = iota
+	StatusComplete
+	StatusPending
+	StatusDeleted
 )

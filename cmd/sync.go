@@ -71,7 +71,6 @@ to quickly create a Cobra application.`,
 				slog.Error("Could not update remote task", "err", err)
 			}
 		}
-
 	},
 }
 

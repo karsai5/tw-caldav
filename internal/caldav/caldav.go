@@ -13,37 +13,25 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 )
 
-func NewClient(path string, username string, pass string) (*calDav, error) {
+func NewClient(path string, username string, pass string) (*CalDav, error) {
 	client := webdav.HTTPClientWithBasicAuth(nil, username, pass)
 	calDavClient, err := caldav.NewClient(client, path)
 
 	if err != nil {
 		return nil, err
 	}
-	cd := calDav{
+	cd := CalDav{
 		Client: calDavClient,
 	}
 
 	return &cd, nil
 }
 
-type calDav struct {
+type CalDav struct {
 	Client *caldav.Client
 }
 
-func (cd *calDav) GetTodosForCalendar(calendarPath string) ([]caldav.CalendarObject, error) {
-	query := &caldav.CalendarQuery{
-		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
-		CompFilter:  caldav.CompFilter{Name: "VCALENDAR", Comps: []caldav.CompFilter{{Name: "VTODO"}}},
-	}
-	objects, err := cd.Client.QueryCalendar(context.TODO(), calendarPath, query)
-	if err != nil {
-		return []caldav.CalendarObject{}, err
-	}
-	return objects, nil
-}
-
-func (cd *calDav) GetAllTodos() (todos []*Todo, err error) {
+func (cd *CalDav) GetAllTodos() (todos []*Todo, err error) {
 	calendars, err := cd.Client.FindCalendars(context.TODO(), "")
 	if err != nil {
 		return todos, fmt.Errorf("While getting calendars: %w", err)
@@ -65,6 +53,18 @@ func (cd *calDav) GetAllTodos() (todos []*Todo, err error) {
 	return todos, nil
 }
 
+func (cd *CalDav) GetTodosForCalendar(calendarPath string) ([]caldav.CalendarObject, error) {
+	query := &caldav.CalendarQuery{
+		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
+		CompFilter:  caldav.CompFilter{Name: "VCALENDAR", Comps: []caldav.CompFilter{{Name: "VTODO"}}},
+	}
+	objects, err := cd.Client.QueryCalendar(context.TODO(), calendarPath, query)
+	if err != nil {
+		return []caldav.CalendarObject{}, err
+	}
+	return objects, nil
+}
+
 func createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, error) {
 	if cal == nil {
 		return nil, fmt.Errorf("cal can't be nil")
@@ -78,9 +78,9 @@ func createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, err
 	}
 
 	todo := Todo{
-		calendar:       cal,
-		calendarObject: calObj,
-		todoComponent:  calObj.Data.Children[0],
+		Calendar:       cal,
+		CalendarObject: calObj,
+		TodoComponent:  calObj.Data.Children[0],
 		Path:           calObj.Path,
 	}
 
@@ -88,68 +88,88 @@ func createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, err
 }
 
 type Todo struct {
-	calendar       *caldav.Calendar
-	calendarObject *caldav.CalendarObject
-	todoComponent  *ical.Component
+	Calendar       *caldav.Calendar
+	CalendarObject *caldav.CalendarObject
+	TodoComponent  *ical.Component
 	Path           string
 }
 
 // LocalId implements task.Task.
 func (t *Todo) LocalId() *string {
-	return nil
+	prop := t.TodoComponent.Props.Get("TW-ID")
+	if prop == nil {
+		return nil
+	}
+	return &prop.Value
+}
+
+func (t *Todo) SetLocalId(str *string) {
+	prop := ical.NewProp("TW-ID")
+	if str != nil {
+		prop.SetText(*str)
+	}
+	t.TodoComponent.Props.Set(prop)
 }
 
 // RemotePath implements task.Task.
 func (t *Todo) RemotePath() *string {
-	return &t.calendarObject.Path
+	return &t.CalendarObject.Path
 }
 
 // LastModified implements task.Task.
 func (t *Todo) LastModified() time.Time {
-	prop := t.todoComponent.Props.Get("LAST-MODIFIED")
+	prop := t.TodoComponent.Props.Get("LAST-MODIFIED")
 	time, err := prop.DateTime(&time.Location{})
 	if err != nil {
-		slog.Error("Could not parse time: %s", prop.Value)
+		slog.Error("Could not parse time: %s", "time", prop.Value)
 	}
 	return time
 }
 
 // LastSynced implements task.Task.
 func (t *Todo) LastSynced() *time.Time {
-	prop := t.todoComponent.Props.Get("TW-LAST-SYNCED")
+	prop := t.TodoComponent.Props.Get("TW-LAST-SYNCED")
 	if prop == nil {
 		return nil
 	}
 	time, err := prop.DateTime(&time.Location{})
 	if err != nil {
-		slog.Error("Could not parse time: %s", prop.Value)
+		slog.Error("Could not parse time: %s", "time", prop.Value)
 		return nil
 	}
 	return &time
 }
 
+func (t *Todo) SetLastSynced(lastsync *time.Time) {
+	prop := ical.NewProp("TW-LAST-SYNCED")
+	if lastsync != nil {
+		prop.SetDate(*lastsync)
+	}
+	t.TodoComponent.Props.Set(prop)
+}
+
 // Due implements task.Task.
 func (t *Todo) Due() *time.Time {
-	prop := t.todoComponent.Props.Get("DUE")
+	prop := t.TodoComponent.Props.Get("DUE")
 	if prop == nil {
 		return nil
 	}
 	time, err := prop.DateTime(&time.Location{})
 	if err != nil {
-		slog.Error("Could not parse time: %s", prop.Value)
+		slog.Error("Could not parse time: %s", "time", prop.Value)
 	}
 	return &time
 }
 
 // Priority implements task.Task.
 func (t *Todo) Priority() task.Priority {
-	prop := t.todoComponent.Props.Get("PRIORITY")
+	prop := t.TodoComponent.Props.Get("PRIORITY")
 	if prop == nil {
 		return 0
 	}
 	priority, err := prop.Int()
 	if err != nil {
-		slog.Error("Could not pass priority: %s", prop.Value)
+		slog.Error("Could not pass priority: %s", "priority", prop.Value)
 	}
 
 	return task.Priority(priority)
@@ -157,12 +177,12 @@ func (t *Todo) Priority() task.Priority {
 
 // Project implements task.Task.
 func (t *Todo) Project() string {
-	return t.calendar.Name
+	return t.Calendar.Name
 }
 
 // Tags implements task.Task.
 func (t *Todo) Tags() []string {
-	prop := t.todoComponent.Props.Get("CATEGORIES")
+	prop := t.TodoComponent.Props.Get("CATEGORIES")
 	if prop == nil {
 		return []string{}
 	}
@@ -175,7 +195,7 @@ func (t *Todo) Description() string {
 }
 
 func (t *Todo) GetStringProp(key string) string {
-	prop := t.todoComponent.Props.Get(key)
+	prop := t.TodoComponent.Props.Get(key)
 	if prop == nil {
 		return ""
 	}

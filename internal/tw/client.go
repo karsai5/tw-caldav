@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"karsai5/tw-caldav/internal/task"
 	"karsai5/tw-caldav/pkg/taskwarrior"
+	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,8 +32,7 @@ func (t *Task) LastModified() time.Time {
 
 // LastSynced implements task.Task.
 func (t *Task) LastSynced() *time.Time {
-	// TODO: implement
-	return nil
+	return t.task.LastSync
 }
 
 // LocalId implements task.Task.
@@ -83,4 +86,33 @@ func (t *Taskwarrior) GetAllTasks() (tasks []*Task, err error) {
 		tasks = append(tasks, &Task{task: t})
 	}
 	return tasks, err
+}
+
+func (t *Taskwarrior) AddTask(opts ...string) (uuid string, err error) {
+	out, err := taskwarrior.Run(append([]string{"add"}, opts...)...)
+	if err != nil {
+		return "", fmt.Errorf("While adding task: %w", err)
+	}
+
+	taskNumber, err := extractNumber(out)
+	if err != nil {
+		return "", fmt.Errorf("While getting tasknumber: %w", err)
+	}
+
+	uuid, err = taskwarrior.Run("_get", fmt.Sprintf("%d.uuid", taskNumber))
+	if err != nil {
+		return "", fmt.Errorf("While getting uuid of task: %w", err)
+	}
+
+	uuid = strings.TrimSpace(uuid)
+
+	slog.Debug("Adding task", "id", taskNumber, "uuid", uuid)
+
+	return uuid, err
+}
+
+func extractNumber(s string) (int, error) {
+	re := regexp.MustCompile(`\d+`)
+	numStr := re.FindString(s)
+	return strconv.Atoi(numStr)
 }

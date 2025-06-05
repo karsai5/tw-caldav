@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var TimeLayout = "20060102T150405Z"
+
 type Task struct {
 	Id          int        `json:"id"`
 	Description string     `json:"description"`
@@ -50,6 +52,11 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	err = t.setLastSync(aux.LastSync)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -57,7 +64,7 @@ func (t *Task) setDue(str string) error {
 	if str == "" {
 		return nil
 	}
-	parsedTime, err := time.Parse("20060102T150405Z", str)
+	parsedTime, err := time.Parse(TimeLayout, str)
 	if err != nil {
 		return err
 	}
@@ -69,7 +76,7 @@ func (t *Task) setLastSync(str string) error {
 	if str == "" {
 		return nil
 	}
-	parsedTime, err := time.Parse("20060102T150405Z", str)
+	parsedTime, err := time.Parse(TimeLayout, str)
 	if err != nil {
 		return err
 	}
@@ -78,7 +85,7 @@ func (t *Task) setLastSync(str string) error {
 }
 
 func (t *Task) setModified(str string) error {
-	parsedTime, err := time.Parse("20060102T150405Z", str)
+	parsedTime, err := time.Parse(TimeLayout, str)
 	if err != nil {
 		return err
 	}
@@ -99,6 +106,16 @@ func Sync() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func Run(cmds ...string) (string, error) {
+	out, err := exec.Command("task", cmds...).Output()
+
+	if err != nil {
+		return "", fmt.Errorf("while running task command: %w", err)
+	}
+
+	return string(out), nil
 }
 
 func List(filter string) (tasks []Task, err error) {

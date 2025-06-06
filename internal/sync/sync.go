@@ -1,11 +1,11 @@
 package sync
 
 import (
-	"fmt"
 	"karsai5/tw-caldav/internal/caldav"
 	"karsai5/tw-caldav/internal/sync/task"
 	"karsai5/tw-caldav/internal/tw"
 	"log/slog"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -17,14 +17,16 @@ func NewSyncProcess() (sp SyncProcess, err error) {
 		return sp, err
 	}
 	return SyncProcess{
-		local:  local,
-		remote: *remote,
+		local:    local,
+		remote:   *remote,
+		synctime: time.Now(),
 	}, err
 }
 
 type SyncProcess struct {
-	local  tw.Taskwarrior
-	remote caldav.CalDav
+	local    tw.Taskwarrior
+	remote   caldav.CalDavService
+	synctime time.Time
 }
 
 func (sp SyncProcess) Sync() error {
@@ -39,35 +41,61 @@ func (sp SyncProcess) Sync() error {
 		panic(err)
 	}
 
-	fmt.Printf("%d tasks found locally\n", len(localTasks))
-	fmt.Printf("%d tasks found remotely\n\n", len(remoteTodos))
+	slog.Info("Tasks found", "locally", len(localTasks), "remotely", len(remoteTodos))
 
-	processedTasks := processTasks(createMapOfLocalTasks(localTasks), createMapOfRemoteTasks(remoteTodos))
+	taskGroups := processTasks(createMapOfLocalTasks(localTasks), createMapOfRemoteTasks(remoteTodos))
 
-	fmt.Printf("%d remote tasks to create\n", len(processedTasks.newRemoteTasks))
-	if len(processedTasks.newRemoteTasks) > 0 {
-		PrintTable(processedTasks.newRemoteTasks)
+	if size := len(taskGroups.newRemoteTasks); size > 0 {
+		slog.Info("Remote tasks to create", "num", size)
 	}
-	fmt.Printf("%d local tasks to create\n\n", len(processedTasks.newLocalTasks))
-	if len(processedTasks.newLocalTasks) > 0 {
-		PrintTable(processedTasks.newLocalTasks)
+	if size := len(taskGroups.newLocalTasks); size > 0 {
+		slog.Info("Local tasks to create", "num", size)
 	}
-	fmt.Printf("%d remote tasks to delete\n", len(processedTasks.remoteTasksToDelete))
-	if len(processedTasks.remoteTasksToDelete) > 0 {
-		PrintTable(processedTasks.remoteTasksToDelete)
+	if size := len(taskGroups.remoteTasksToDelete); size > 0 {
+		slog.Info("Remote tasks to delete", "num", size)
 	}
-	fmt.Printf("%d local tasks to delete\n\n", len(processedTasks.localTasksToDelete))
-	if len(processedTasks.localTasksToDelete) > 0 {
-		PrintTable(processedTasks.localTasksToDelete)
+	if size := len(taskGroups.localTasksToDelete); size > 0 {
+		slog.Info("Local tasks to delete", "num", size)
 	}
-	fmt.Printf("%d tasks to update\n", len(processedTasks.tasksToUpdate))
-	if len(processedTasks.tasksToUpdate) > 0 {
-		arr := []task.Task{}
-		for _, u := range processedTasks.tasksToUpdate {
-			arr = append(arr, u.updatedTask)
+	if size := len(taskGroups.tasksToUpdate); size > 0 {
+		slog.Info("Tasks to update", "num", size)
+	}
+
+	for _, t := range taskGroups.newLocalTasks {
+		slog.Info("Creating local task", "task", t.Description())
+		uuid, err := sp.local.CreateTask(t, sp.synctime)
+		if err != nil {
+			slog.Error("Could not create local task", "err", err, "task", t)
+			continue
 		}
-		PrintTable(arr)
+
+		remoteTaskUpdate := task.CreateShellTask(
+			task.WithTask(t),
+			task.WithSyncTime(sp.synctime),
+			task.WithLocalId(uuid),
+		)
+
+		slog.Debug("Updating remote task", "task", remoteTaskUpdate.Task)
+		err = t.Update(remoteTaskUpdate)
+		if err != nil {
+			slog.Error("Could not update remote task", "err", err, "task", t)
+		}
 	}
+
+	for _, t := range taskGroups.localTasksToDelete {
+		slog.Info("Deleting local task", "uuid", *t.LocalId(), "desc", t.Description())
+		err := sp.local.RemoveTask(*t.LocalId())
+		if err != nil {
+			slog.Error("Error deleting task", "err", err)
+		}
+	}
+
+	// TODO: create remote tasks
+
+	// TODO: rm remote tasks
+
+	// TODO: update tasks
+
 	return nil
 }
 
@@ -103,6 +131,7 @@ func processTasks(localTaskMap taskMapType, remoteTaskMap taskMapType) processed
 		if remoteTask, exists := remoteTaskMap[*t.RemotePath()]; exists {
 			if t.LastSynced() == nil || remoteTask.LastSynced() == nil {
 				slog.Error("Cant process task with no last synced time", "localtask", t, "remotetask", remoteTask)
+				continue
 			}
 			if t.LastModified().After(*t.LastSynced()) || remoteTask.LastModified().After(*remoteTask.LastSynced()) {
 				latestTask := t

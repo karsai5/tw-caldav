@@ -119,7 +119,7 @@ func escapeQuotes(str string) string {
 }
 
 func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
-	rawTasks, err := taskwarrior.List("")
+	rawTasks, err := taskwarrior.List("+PENDING or +COMPLETED")
 	if err != nil {
 		return tasks, fmt.Errorf("While getting tasks from taskwarrior: %w", err)
 	}
@@ -150,6 +150,17 @@ func (t *Taskwarrior) AddTask(opts ...string) (uuid string, err error) {
 	slog.Debug("Adding task", "id", taskNumber, "uuid", uuid)
 
 	return uuid, err
+}
+
+func (t *Taskwarrior) RemoveTask(uuid string) error {
+	if uuid == "" {
+		return fmt.Errorf("UUID must be set")
+	}
+	out, err := taskwarrior.Run("rc.confirmation=off", fmt.Sprintf("uuid:%s", uuid), "delete")
+	if err != nil {
+		return fmt.Errorf("Error deleting task: %s: %w", out, err)
+	}
+	return nil
 }
 
 func extractNumber(s string) (int, error) {

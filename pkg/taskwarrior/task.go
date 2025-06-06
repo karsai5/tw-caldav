@@ -109,10 +109,10 @@ func Sync() {
 }
 
 func Run(cmds ...string) (string, error) {
-	out, err := exec.Command("task", cmds...).Output()
+	out, err := exec.Command("task", cmds...).CombinedOutput()
 
 	if err != nil {
-		return "", fmt.Errorf("while running task command: %w", err)
+		return string(out), fmt.Errorf("while running task command: %w", err)
 	}
 
 	return string(out), nil

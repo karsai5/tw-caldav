@@ -15,6 +15,7 @@ type Task interface {
 	LocalId() *string
 
 	Status() Status
+	Update(t Task) error
 }
 
 type Status int8

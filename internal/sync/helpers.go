@@ -1,6 +1,7 @@
-package task
+package sync
 
 import (
+	"karsai5/tw-caldav/internal/sync/task"
 	"log/slog"
 	"os"
 	"strings"
@@ -8,12 +9,12 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
-func DebugTask(t Task) {
+func DebugTask(t task.Task) {
 	tags := strings.Join(t.Tags(), ", ")
 	slog.Debug("Task", "desc", t.Description(), "project", t.Project(), "due", t.Due(), "priority", t.Priority(), "tags", tags)
 }
 
-func PrintTable(tasks []Task) {
+func PrintTable(tasks []task.Task) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
 	tab.AppendHeader(table.Row{"desc", "proj", "due", "priority", "tags", "last modified", "last synced", "path", "id"})

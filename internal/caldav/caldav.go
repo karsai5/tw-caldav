@@ -3,7 +3,7 @@ package caldav
 import (
 	"context"
 	"fmt"
-	"karsai5/tw-caldav/internal/task"
+	"karsai5/tw-caldav/internal/sync/task"
 	"log/slog"
 	"strings"
 	"time"
@@ -31,7 +31,7 @@ type CalDav struct {
 	Client *caldav.Client
 }
 
-func (cd *CalDav) GetAllTodos() (todos []*Todo, err error) {
+func (cd *CalDav) GetAllTodos() (todos []Todo, err error) {
 	calendars, err := cd.Client.FindCalendars(context.TODO(), "")
 	if err != nil {
 		return todos, fmt.Errorf("While getting calendars: %w", err)
@@ -47,7 +47,7 @@ func (cd *CalDav) GetAllTodos() (todos []*Todo, err error) {
 			if err != nil {
 				return todos, fmt.Errorf("While creating todo: %w", err)
 			}
-			todos = append(todos, todo)
+			todos = append(todos, *todo)
 		}
 	}
 	return todos, nil
@@ -92,6 +92,16 @@ type Todo struct {
 	CalendarObject *caldav.CalendarObject
 	TodoComponent  *ical.Component
 	Path           string
+}
+
+// Update implements task.Task.
+func (*Todo) Update(t task.Task) error {
+	panic("unimplemented")
+}
+
+// Status implements task.Task.
+func (t *Todo) Status() task.Status {
+	panic("unimplemented")
 }
 
 // LocalId implements task.Task.

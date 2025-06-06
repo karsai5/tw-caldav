@@ -2,7 +2,7 @@ package tw
 
 import (
 	"fmt"
-	"karsai5/tw-caldav/internal/task"
+	"karsai5/tw-caldav/internal/sync/task"
 	"karsai5/tw-caldav/pkg/taskwarrior"
 	"log/slog"
 	"regexp"
@@ -13,6 +13,16 @@ import (
 
 type Task struct {
 	task taskwarrior.Task
+}
+
+// Update implements task.Task.
+func (*Task) Update(t task.Task) error {
+	panic("unimplemented")
+}
+
+// Status implements task.Task.
+func (t *Task) Status() task.Status {
+	panic("unimplemented")
 }
 
 // Description implements task.Task.
@@ -45,13 +55,13 @@ func (t *Task) Priority() task.Priority {
 
 	switch t.task.Priority {
 	case "H":
-		return task.High
+		return task.PriorityHigh
 	case "M":
-		return task.Medium
+		return task.PriorityMedium
 	case "L":
-		return task.Low
+		return task.PriorityLow
 	default:
-		return task.Unset
+		return task.PriorityUnset
 	}
 
 }
@@ -77,13 +87,44 @@ func (t *Task) Tags() []string {
 type Taskwarrior struct {
 }
 
-func (t *Taskwarrior) GetAllTasks() (tasks []*Task, err error) {
+func (tw *Taskwarrior) CreateTask(t task.Task, synctime time.Time) (uuid string, err error) {
+	opts := []string{
+		t.Description(),
+		fmt.Sprintf("lastsync:%s", synctime.Format(taskwarrior.TimeLayout)),
+	}
+	if t.RemotePath() != nil {
+		opts = append(opts, fmt.Sprintf("remotepath:%q", *t.RemotePath()))
+	}
+	if t.Project() != "" {
+		opts = append(opts, fmt.Sprintf("project:%q", escapeQuotes(t.Project())))
+	}
+	if t.Due() != nil {
+		opts = append(opts, fmt.Sprintf("due:%s", t.Due()))
+	}
+	if t.Priority() != task.PriorityUnset {
+		opts = append(opts, fmt.Sprintf("pririty:%s", t.Priority().String()))
+	}
+	for _, tag := range t.Tags() {
+		if strings.Contains(tag, " ") {
+			slog.Error("Cannot add tag with spaces", "tag", tag)
+			continue
+		}
+		opts = append(opts, fmt.Sprintf("+%s", tag))
+	}
+	return tw.AddTask(opts...)
+}
+
+func escapeQuotes(str string) string {
+	return strings.ReplaceAll(str, `"`, `\"`)
+}
+
+func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
 	rawTasks, err := taskwarrior.List("")
 	if err != nil {
 		return tasks, fmt.Errorf("While getting tasks from taskwarrior: %w", err)
 	}
 	for _, t := range rawTasks {
-		tasks = append(tasks, &Task{task: t})
+		tasks = append(tasks, Task{task: t})
 	}
 	return tasks, err
 }

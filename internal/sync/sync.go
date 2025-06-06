@@ -63,7 +63,9 @@ func (sp SyncProcess) Sync() error {
 
 	for _, t := range taskGroups.newLocalTasks {
 		slog.Info("Creating local task", "task", t.Description())
-		uuid, err := sp.local.CreateTask(t, sp.synctime)
+		localTaskToAdd := task.CreateShellTask(task.WithTask(t), task.WithSyncTime(sp.synctime))
+
+		uuid, err := sp.local.AddTask(localTaskToAdd)
 		if err != nil {
 			slog.Error("Could not create local task", "err", err, "task", t)
 			continue
@@ -90,11 +92,20 @@ func (sp SyncProcess) Sync() error {
 		}
 	}
 
-	// TODO: create remote tasks
+	for _, t := range taskGroups.newRemoteTasks {
+		slog.Info("Creating remote task", "task", t.Description())
+		slog.Error("Not implemented")
+	}
 
-	// TODO: rm remote tasks
+	for _, t := range taskGroups.remoteTasksToDelete {
+		slog.Info("Deleting remote task", "path", *t.RemotePath(), "desc", t.Description())
+		slog.Error("Not implemented")
+	}
 
-	// TODO: update tasks
+	for _, t := range taskGroups.tasksToUpdate {
+		slog.Info("Updating task", "task", t.updatedTask.Description(), "path", *t.updatedTask.RemotePath(), "uuid", *t.updatedTask.LocalId())
+		slog.Error("Not implemented")
+	}
 
 	return nil
 }

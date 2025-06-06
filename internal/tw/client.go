@@ -87,10 +87,52 @@ func (t *Task) Tags() []string {
 type Taskwarrior struct {
 }
 
-func (tw *Taskwarrior) CreateTask(t task.Task, synctime time.Time) (uuid string, err error) {
+func escapeQuotes(str string) string {
+	return strings.ReplaceAll(str, `"`, `\"`)
+}
+
+func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
+	rawTasks, err := taskwarrior.List("+PENDING or +COMPLETED")
+	if err != nil {
+		return tasks, fmt.Errorf("While getting tasks from taskwarrior: %w", err)
+	}
+	for _, t := range rawTasks {
+		tasks = append(tasks, Task{task: t})
+	}
+	return tasks, err
+}
+
+func (tw *Taskwarrior) AddTask(t task.Task) (uuid string, err error) {
+
+	out, err := taskwarrior.Run(createAddTaskCmdOptions(t)...)
+	if err != nil {
+		return "", fmt.Errorf("While adding task: %w", err)
+	}
+
+	taskNumber, err := extractNumber(out)
+	if err != nil {
+		return "", fmt.Errorf("While getting tasknumber: %w", err)
+	}
+
+	uuid, err = taskwarrior.Run("_get", fmt.Sprintf("%d.uuid", taskNumber))
+	if err != nil {
+		return "", fmt.Errorf("While getting uuid of task: %w", err)
+	}
+
+	uuid = strings.TrimSpace(uuid)
+
+	slog.Debug("Adding task", "id", taskNumber, "uuid", uuid)
+
+	return uuid, err
+}
+
+func createAddTaskCmdOptions(t task.Task) []string {
 	opts := []string{
+		"add",
 		t.Description(),
-		fmt.Sprintf("lastsync:%s", synctime.Format(taskwarrior.TimeLayout)),
+	}
+	if t.LastSynced() != nil {
+		opts = append(opts, fmt.Sprintf("lastsync:%s", t.LastSynced().Format(taskwarrior.TimeLayout)))
 	}
 	if t.RemotePath() != nil {
 		opts = append(opts, fmt.Sprintf("remotepath:%q", *t.RemotePath()))
@@ -111,45 +153,8 @@ func (tw *Taskwarrior) CreateTask(t task.Task, synctime time.Time) (uuid string,
 		}
 		opts = append(opts, fmt.Sprintf("+%s", tag))
 	}
-	return tw.AddTask(opts...)
-}
 
-func escapeQuotes(str string) string {
-	return strings.ReplaceAll(str, `"`, `\"`)
-}
-
-func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
-	rawTasks, err := taskwarrior.List("+PENDING or +COMPLETED")
-	if err != nil {
-		return tasks, fmt.Errorf("While getting tasks from taskwarrior: %w", err)
-	}
-	for _, t := range rawTasks {
-		tasks = append(tasks, Task{task: t})
-	}
-	return tasks, err
-}
-
-func (t *Taskwarrior) AddTask(opts ...string) (uuid string, err error) {
-	out, err := taskwarrior.Run(append([]string{"add"}, opts...)...)
-	if err != nil {
-		return "", fmt.Errorf("While adding task: %w", err)
-	}
-
-	taskNumber, err := extractNumber(out)
-	if err != nil {
-		return "", fmt.Errorf("While getting tasknumber: %w", err)
-	}
-
-	uuid, err = taskwarrior.Run("_get", fmt.Sprintf("%d.uuid", taskNumber))
-	if err != nil {
-		return "", fmt.Errorf("While getting uuid of task: %w", err)
-	}
-
-	uuid = strings.TrimSpace(uuid)
-
-	slog.Debug("Adding task", "id", taskNumber, "uuid", uuid)
-
-	return uuid, err
+	return opts
 }
 
 func (t *Taskwarrior) RemoveTask(uuid string) error {

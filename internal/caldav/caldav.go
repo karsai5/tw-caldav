@@ -38,7 +38,7 @@ func (cd *CalDavService) GetAllTodos() (todos []Todo, err error) {
 			return todos, fmt.Errorf("While getting todos for calendar: %w", err)
 		}
 		for _, calTodo := range calTodos {
-			todo, err := cd.createTodo(&cal, &calTodo)
+			todo, err := cd.mapTodo(&cal, &calTodo)
 			if err != nil {
 				return todos, fmt.Errorf("While creating todo: %w", err)
 			}
@@ -60,7 +60,7 @@ func (cd *CalDavService) GetTodosForCalendar(calendarPath string) ([]caldav.Cale
 	return objects, nil
 }
 
-func (cd *CalDavService) createTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, error) {
+func (cd *CalDavService) mapTodo(cal *caldav.Calendar, calObj *caldav.CalendarObject) (*Todo, error) {
 	if cal == nil {
 		return nil, fmt.Errorf("cal can't be nil")
 	}

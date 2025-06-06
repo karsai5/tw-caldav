@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -109,6 +111,7 @@ func Sync() {
 }
 
 func Run(cmds ...string) (string, error) {
+	slog.Debug("Running taskwarrior command", "cmd", fmt.Sprintf("task %s", strings.Join(cmds, " ")))
 	out, err := exec.Command("task", cmds...).CombinedOutput()
 
 	if err != nil {

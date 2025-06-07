@@ -3,6 +3,9 @@ package caldav
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
 
 	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
@@ -15,15 +18,112 @@ func NewClient(path string, username string, pass string) (*CalDavService, error
 	if err != nil {
 		return nil, err
 	}
+
 	cd := CalDavService{
-		Client: calDavClient,
+		Client:   calDavClient,
+		BaseURL:  path,
+		Username: username,
+		Password: pass,
+	}
+
+	err = cd.PopulateCalendarMap()
+	if err != nil {
+		return nil, err
+	}
+
+	err = cd.CreateDefaultCalendarIfDoesNotExist()
+	if err != nil {
+		return nil, err
 	}
 
 	return &cd, nil
 }
 
+type CalendarNameToPathMap map[string]string
+
 type CalDavService struct {
-	Client *caldav.Client
+	Client    *caldav.Client
+	BaseURL   string
+	Username  string
+	Password  string
+	Calendars CalendarNameToPathMap
+}
+
+var DEFAULT_CALENDAR = "default"
+
+func (cd *CalDavService) PopulateCalendarMap() error {
+	cd.Calendars = make(CalendarNameToPathMap)
+	calendars, err := cd.Client.FindCalendars(context.TODO(), "")
+	if err != nil {
+		return fmt.Errorf("While getting calendars: %w", err)
+	}
+	for _, c := range calendars {
+		if c.Name == "" {
+			slog.Error("Cannot use calendar without name", "path", c.Path)
+			continue
+		}
+		if existingCalendar, exists := cd.Calendars[c.Name]; exists {
+			return fmt.Errorf("Two calendars found with the same name", "name", c.Name, "cal1", existingCalendar, "cal2", c.Path)
+		}
+		cd.Calendars[c.Name] = c.Path
+	}
+	slog.Debug("calendarMap", "map", cd.Calendars)
+	return nil
+}
+
+func (cd *CalDavService) CreateDefaultCalendarIfDoesNotExist() error {
+	if _, exists := cd.Calendars[DEFAULT_CALENDAR]; exists {
+		return nil
+	}
+
+	path, err := cd.CreateCalendar("/"+DEFAULT_CALENDAR, DEFAULT_CALENDAR)
+	if err != nil {
+		return err
+	}
+
+	cd.Calendars[DEFAULT_CALENDAR] = path
+
+	return nil
+}
+
+func (cd *CalDavService) CreateCalendar(path, name string) (finalPath string, err error) {
+	// Build the MKCALENDAR request body
+	body := `
+	<C:mkcalendar xmlns:D="DAV:"
+           xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:set>
+ <D:prop>
+   <D:displayname>` + xmlEscape(name) + `</D:displayname>
+   <C:supported-calendar-component-set>
+     <C:comp name="VTODO"/>
+   </C:supported-calendar-component-set>
+ </D:prop>
+  </D:set>
+</C:mkcalendar>
+	`
+
+	finalPath = cd.BaseURL + path
+	slog.Debug("Creating calendar", "name", name, "path", path)
+	req, err := http.NewRequest("MKCALENDAR", finalPath, strings.NewReader(body))
+	if err != nil {
+		return finalPath, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/xml")
+	req.SetBasicAuth(cd.Username, cd.Password)
+
+	// Send the request
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return finalPath, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for success
+	if resp.StatusCode != http.StatusCreated {
+		return finalPath, fmt.Errorf("failed to create calendar, status code: %d", resp.StatusCode)
+	}
+
+	return finalPath, nil
 }
 
 func (cd *CalDavService) GetAllTodos() (todos []Todo, err error) {
@@ -81,4 +181,15 @@ func (cd *CalDavService) mapTodo(cal *caldav.Calendar, calObj *caldav.CalendarOb
 	}
 
 	return &todo, nil
+}
+
+func xmlEscape(input string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		"\"", "&quot;",
+		"'", "&apos;",
+	)
+	return replacer.Replace(input)
 }

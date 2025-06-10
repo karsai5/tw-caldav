@@ -26,7 +26,6 @@ func WithTask(t Task) ShellTaskOption {
 			Priority:     t.Priority(),
 			Tags:         t.Tags(),
 			LastModified: t.LastModified(),
-			LastSynced:   t.LastSynced(),
 			RemotePath:   t.RemotePath(),
 			LocalId:      t.LocalId(),
 			Status:       t.Status(),
@@ -34,16 +33,14 @@ func WithTask(t Task) ShellTaskOption {
 	}
 }
 
-func WithSyncTime(synctime time.Time) ShellTaskOption {
-	return func(shellTask *ShellTask) {
-		shellTask.Task.LastModified = synctime
-		shellTask.Task.LastSynced = &synctime
-	}
-}
-
 func WithLocalId(uuid string) ShellTaskOption {
 	return func(shellTask *ShellTask) {
 		shellTask.Task.LocalId = &uuid
+	}
+}
+func WithRemotePath(path string) ShellTaskOption {
+	return func(shellTask *ShellTask) {
+		shellTask.Task.RemotePath = &path
 	}
 }
 
@@ -54,7 +51,6 @@ type Internaltask struct {
 	Priority     Priority
 	Tags         []string
 	LastModified time.Time
-	LastSynced   *time.Time
 
 	RemotePath *string
 	LocalId    *string
@@ -64,11 +60,6 @@ type Internaltask struct {
 
 type ShellTask struct {
 	Task *Internaltask
-}
-
-func (s *ShellTask) SetLastModifiedAndSyncedTime(synctime time.Time) {
-	s.Task.LastSynced = &synctime
-	s.Task.LastModified = synctime
 }
 
 func (s *ShellTask) SetLocalId(uuid string) {
@@ -88,11 +79,6 @@ func (s ShellTask) Due() *time.Time {
 // LastModified implements Task.
 func (s ShellTask) LastModified() time.Time {
 	return s.Task.LastModified
-}
-
-// LastSynced implements Task.
-func (s ShellTask) LastSynced() *time.Time {
-	return s.Task.LastSynced
 }
 
 // LocalId implements Task.
@@ -127,7 +113,11 @@ func (s ShellTask) Tags() []string {
 
 // Update implements Task.
 func (s ShellTask) Update(t Task) error {
-	return errors.New("Update not possible on this kind of task")
+	return errors.New("Update not possible on a shell task")
+}
+
+func (s ShellTask) Delete() error {
+	return errors.New("Delete not possible on a shell task")
 }
 
 var _ Task = ShellTask{}

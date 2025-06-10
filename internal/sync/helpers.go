@@ -17,7 +17,7 @@ func DebugTask(t task.Task) {
 func PrintTable(tasks []task.Task) {
 	tab := table.NewWriter()
 	tab.SetOutputMirror(os.Stdout)
-	tab.AppendHeader(table.Row{"desc", "proj", "due", "priority", "tags", "last modified", "last synced", "path", "id"})
+	tab.AppendHeader(table.Row{"desc", "proj", "due", "priority", "tags", "last modified", "path", "id"})
 	for _, t := range tasks {
 		tags := strings.Join(t.Tags(), ", ")
 
@@ -36,7 +36,7 @@ func PrintTable(tasks []task.Task) {
 			localId = "✔️"
 		}
 
-		tab.AppendRow(table.Row{desc, t.Project(), t.Due(), t.Priority(), tags, t.LastModified(), t.LastSynced(), remotePath, localId})
+		tab.AppendRow(table.Row{desc, t.Project(), t.Due(), t.Priority(), tags, t.LastModified(), remotePath, localId})
 	}
 	tab.Render()
 }

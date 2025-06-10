@@ -3,6 +3,7 @@ module karsai5/tw-caldav
 go 1.24.1
 
 require (
+	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
 	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6 // indirect
 	github.com/emersion/go-webdav v0.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
@@ -11,6 +12,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.6.7 // indirect
 	github.com/lmittmann/tint v1.1.1 // indirect
+	github.com/manifoldco/promptui v0.9.0 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

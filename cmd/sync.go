@@ -24,6 +24,7 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			panic(err)
 		}
+		syncProcess.Interactive = true
 
 		if err = syncProcess.Sync(); err != nil {
 			panic(err)

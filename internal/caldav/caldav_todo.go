@@ -1,10 +1,13 @@
 package caldav
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"karsai5/tw-caldav/internal/sync/task"
-	"karsai5/tw-caldav/internal/utils/comp"
 	"log/slog"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,36 +25,14 @@ type Todo struct {
 
 // Update implements task.Task.
 func (t *Todo) Update(u task.Task) error {
-	if newDesc := u.Description(); t.Description() != newDesc {
-		t.setDescription(newDesc)
-	}
+	// TODO: Handle project change
 
-	if newProj := u.Project(); t.Project() != newProj {
-		panic("unimplemented")
-	}
+	updatePropsWithInformationFromTask(&t.TodoComponent.Props, u)
 
-	if newDue := u.Due(); !comp.EqualTimePtrs(newDue, t.Due()) {
-		panic("unimplemented")
-	}
-
-	if newPriority := u.Priority(); t.Priority() != newPriority {
-		panic("unimplemented")
-	}
-
-	// TODO: Tags
-	// TODO: Status
-
-	if updatedLocalId := u.LocalId(); !comp.EqualPtrs(t.LocalId(), updatedLocalId) {
-		t.setLocalId(*updatedLocalId)
-	}
-
-	if updatedLastModified := u.LastModified(); t.LastModified() != updatedLastModified {
-		t.setLastModified(updatedLastModified)
-	}
-
-	if updatedLastSynced := u.LastSynced(); !comp.EqualPtrs(t.LastSynced(), updatedLastSynced) {
-		t.setLastSynced(*updatedLastSynced)
-	}
+	buf := new(bytes.Buffer)
+	encoder := ical.NewEncoder(buf)
+	encoder.Encode(t.CalendarObject.Data)
+	slog.Debug("Updating caldav ical", "path", t.Path, "ical", buf.String())
 
 	_, err := t.calDavService.Client.PutCalendarObject(context.TODO(), t.Path, t.CalendarObject.Data)
 
@@ -60,7 +41,7 @@ func (t *Todo) Update(u task.Task) error {
 
 // Status implements task.Task.
 func (t *Todo) Status() task.Status {
-	prop := t.TodoComponent.Props.Get("TW-ID")
+	prop := t.TodoComponent.Props.Get("STATUS")
 	if prop == nil {
 		return task.StatusPending
 	}
@@ -76,17 +57,17 @@ func (t *Todo) Status() task.Status {
 
 // LocalId implements task.Task.
 func (t *Todo) LocalId() *string {
-	prop := t.TodoComponent.Props.Get("TW-ID")
+	prop := t.TodoComponent.Props.Get("DESCRIPTION")
 	if prop == nil {
 		return nil
 	}
-	return &prop.Value
-}
-
-func (t *Todo) setLocalId(str string) {
-	prop := ical.NewProp("TW-ID")
-	prop.SetText(str)
-	t.TodoComponent.Props.Set(prop)
+	r := regexp.MustCompile("taskwarrior_id=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+	id := r.FindString(prop.Value)
+	id = strings.Replace(id, "taskwarrior_id=", "", -1)
+	if id == "" {
+		return nil
+	}
+	return &id
 }
 
 // RemotePath implements task.Task.
@@ -102,32 +83,6 @@ func (t *Todo) LastModified() time.Time {
 		slog.Error("Could not parse time: %s", "time", prop.Value)
 	}
 	return time
-}
-
-func (t *Todo) setLastModified(lastsync time.Time) {
-	prop := ical.NewProp("LAST-MODIFIED")
-	prop.SetDate(lastsync)
-	t.TodoComponent.Props.Set(prop)
-}
-
-// LastSynced implements task.Task.
-func (t *Todo) LastSynced() *time.Time {
-	prop := t.TodoComponent.Props.Get("TW-LAST-SYNCED")
-	if prop == nil {
-		return nil
-	}
-	time, err := prop.DateTime(&time.Location{})
-	if err != nil {
-		slog.Error("Could not parse time: %s", "time", prop.Value)
-		return nil
-	}
-	return &time
-}
-
-func (t *Todo) setLastSynced(lastsync time.Time) {
-	prop := ical.NewProp("TW-LAST-SYNCED")
-	prop.SetDate(lastsync)
-	t.TodoComponent.Props.Set(prop)
 }
 
 // Due implements task.Task.
@@ -149,7 +104,7 @@ func (t *Todo) Priority() task.Priority {
 	if prop == nil {
 		return 0
 	}
-	priority, err := prop.Int()
+	priority, err := strconv.Atoi(prop.Value)
 	if err != nil {
 		slog.Error("Could not pass priority: %s", "priority", prop.Value)
 	}
@@ -159,7 +114,11 @@ func (t *Todo) Priority() task.Priority {
 
 // Project implements task.Task.
 func (t *Todo) Project() string {
-	return t.Calendar.Name
+	proj := t.Calendar.Name
+	if proj == DEFAULT_CALENDAR {
+		return ""
+	}
+	return proj
 }
 
 // Tags implements task.Task.
@@ -176,16 +135,15 @@ func (t *Todo) Description() string {
 	return t.GetStringProp("SUMMARY")
 }
 
-func (t *Todo) setDescription(desc string) {
-	prop := ical.NewProp("TW-LAST-SYNCED")
-	prop.SetText(desc)
-	t.TodoComponent.Props.Set(prop)
-}
-
 func (t *Todo) GetStringProp(key string) string {
 	prop := t.TodoComponent.Props.Get(key)
 	if prop == nil {
 		return ""
 	}
 	return prop.Value
+}
+
+func (t *Todo) Delete() error {
+	// TODO: implement
+	return fmt.Errorf("Not implemented")
 }

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"fmt"
 	"karsai5/tw-caldav/internal/caldav"
 	"karsai5/tw-caldav/internal/sync/task"
 	"karsai5/tw-caldav/internal/tw"
@@ -24,9 +25,10 @@ func NewSyncProcess() (sp SyncProcess, err error) {
 }
 
 type SyncProcess struct {
-	local    tw.Taskwarrior
-	remote   caldav.CalDavService
-	synctime time.Time
+	local       tw.Taskwarrior
+	remote      caldav.CalDavService
+	synctime    time.Time
+	Interactive bool
 }
 
 func (sp SyncProcess) Sync() error {
@@ -43,70 +45,153 @@ func (sp SyncProcess) Sync() error {
 
 	slog.Info("Tasks found", "locally", len(localTasks), "remotely", len(remoteTodos))
 
-	taskGroups := processTasks(createMapOfLocalTasks(localTasks), createMapOfRemoteTasks(remoteTodos))
+	taskGroups := processTasks(localTasks, remoteTodos)
 
-	if size := len(taskGroups.newRemoteTasks); size > 0 {
-		slog.Info("Remote tasks to create", "num", size)
-	}
-	if size := len(taskGroups.newLocalTasks); size > 0 {
-		slog.Info("Local tasks to create", "num", size)
-	}
-	if size := len(taskGroups.remoteTasksToDelete); size > 0 {
-		slog.Info("Remote tasks to delete", "num", size)
-	}
-	if size := len(taskGroups.localTasksToDelete); size > 0 {
-		slog.Info("Local tasks to delete", "num", size)
-	}
+	printTasks(taskGroups.newRemoteTasks, "Remote tasks to create")
+	printTasks(taskGroups.newLocalTasks, "Local tasks to create")
+	printTasks(taskGroups.remoteTasksToDelete, "Remote tasks to delete")
+	printTasks(taskGroups.localTasksToDelete, "Local tasks to delete")
+
 	if size := len(taskGroups.tasksToUpdate); size > 0 {
 		slog.Info("Tasks to update", "num", size)
-	}
-
-	for _, t := range taskGroups.newLocalTasks {
-		slog.Info("Creating local task", "task", t.Description())
-		localTaskToAdd := task.CreateShellTask(task.WithTask(t), task.WithSyncTime(sp.synctime))
-
-		uuid, err := sp.local.AddTask(localTaskToAdd)
-		if err != nil {
-			slog.Error("Could not create local task", "err", err, "task", t)
-			continue
-		}
-
-		remoteTaskUpdate := task.CreateShellTask(
-			task.WithTask(t),
-			task.WithSyncTime(sp.synctime),
-			task.WithLocalId(uuid),
-		)
-
-		slog.Debug("Updating remote task", "task", remoteTaskUpdate.Task)
-		err = t.Update(remoteTaskUpdate)
-		if err != nil {
-			slog.Error("Could not update remote task", "err", err, "task", t)
+		for _, ttu := range taskGroups.tasksToUpdate {
+			slog.Debug(ttu.updatedTask.Description(), "localId", *ttu.localTask.LocalId(), "remotePath", *ttu.remoteTask.RemotePath())
 		}
 	}
 
-	for _, t := range taskGroups.localTasksToDelete {
-		slog.Info("Deleting local task", "uuid", *t.LocalId(), "desc", t.Description())
-		err := sp.local.RemoveTask(*t.LocalId())
-		if err != nil {
-			slog.Error("Error deleting task", "err", err)
+	sp.handleTasks(taskGroups.newLocalTasks, sp.handleLocalTaskCreate, "Would you like to create local tasks?", "Creating local tasks")
+	sp.handleTasks(taskGroups.newRemoteTasks, sp.handleRemoteTaskCreate, "Would you like to create remote tasks?", "Creating remote tasks")
+
+	sp.handleTasks(taskGroups.localTasksToDelete, sp.handleLocalTaskDelete, "Would you like to remove local tasks?", "Removing local tasks")
+	sp.handleTasks(taskGroups.remoteTasksToDelete, sp.handleRemoteTaskDelete, "Would you like to remove remote tasks?", "Removing remote tasks")
+
+	updateTasks := func() {
+		for _, ttu := range taskGroups.tasksToUpdate {
+			err := sp.handleTaskUpdate(ttu)
+			if err != nil {
+				slog.Error("Error updating task", "err", err)
+			}
 		}
 	}
 
-	for _, t := range taskGroups.newRemoteTasks {
-		slog.Info("Creating remote task", "task", t.Description())
-		slog.Error("Not implemented")
+	if len(taskGroups.tasksToUpdate) > 0 {
+		tasks := []task.Task{}
+		for _, ttu := range taskGroups.tasksToUpdate {
+			tasks = append(tasks, ttu.updatedTask)
+		}
+		if sp.Interactive {
+			fmt.Println("Would you like to udpate tasks?")
+			PrintTable(tasks)
+			if yesNo() {
+				updateTasks()
+			}
+		} else {
+			slog.Info("Creating local tasks")
+			updateTasks()
+		}
 	}
 
-	for _, t := range taskGroups.remoteTasksToDelete {
-		slog.Info("Deleting remote task", "path", *t.RemotePath(), "desc", t.Description())
-		slog.Error("Not implemented")
+	return nil
+}
+
+func (sp SyncProcess) handleTasks(tasks []task.Task, handleFunc func(task.Task) error, interactionMsg string, logMsg string) {
+	handletasks := func() {
+		for _, t := range tasks {
+			err := handleFunc(t)
+			if err != nil {
+				slog.Error("Error processing task", "err", err)
+			}
+		}
 	}
 
-	for _, t := range taskGroups.tasksToUpdate {
-		slog.Info("Updating task", "task", t.updatedTask.Description(), "path", *t.updatedTask.RemotePath(), "uuid", *t.updatedTask.LocalId())
-		slog.Error("Not implemented")
+	if len(tasks) == 0 {
+		return
 	}
 
+	if sp.Interactive {
+		fmt.Println(interactionMsg)
+		PrintTable(tasks)
+		if yesNo() {
+			handletasks()
+		}
+	} else {
+		slog.Info(logMsg)
+		handletasks()
+	}
+}
+
+func printTasks(tasks []task.Task, msg string) {
+	if size := len(tasks); size > 0 {
+		slog.Info(msg, "num", size)
+		// PrintTable(tasks)
+	}
+}
+
+func (sp SyncProcess) handleTaskUpdate(ttu taskToUpdate) error {
+	slog.Info("Updating task", "task", ttu.updatedTask.Description(), "path", *ttu.updatedTask.RemotePath(), "uuid", *ttu.updatedTask.LocalId())
+	err := ttu.localTask.Update(ttu.updatedTask)
+	if err != nil {
+		return fmt.Errorf("While updating local task: %w", err)
+	}
+
+	err = ttu.remoteTask.Update(ttu.updatedTask)
+	if err != nil {
+		return fmt.Errorf("While updating remote task: %w", err)
+	}
+	return nil
+}
+
+func (sp SyncProcess) handleRemoteTaskCreate(lt task.Task) error {
+	slog.Info("Creating remote task", "task", lt.Description())
+	finalPath, err := sp.remote.CreateNewTodo(lt)
+	if err != nil {
+		return err
+	}
+	slog.Info("Remote task created", "path", finalPath)
+
+	localTaskUpdate := task.CreateShellTask(
+		task.WithTask(lt),
+		task.WithRemotePath(finalPath),
+	)
+
+	err = lt.Update(localTaskUpdate)
+	if err != nil {
+		return err
+	}
+	slog.Info("Local task updated", "uuid", lt.LocalId())
+
+	return nil
+}
+
+func (sp SyncProcess) handleLocalTaskCreate(t task.Task) error {
+	slog.Info("Creating local task", "task", t.Description())
+	localTaskToAdd := task.CreateShellTask(task.WithTask(t))
+
+	uuid, err := sp.local.AddTask(localTaskToAdd)
+	if err != nil {
+		return fmt.Errorf("While creating local task: %w", err)
+	}
+
+	remoteTaskUpdate := task.CreateShellTask(
+		task.WithTask(t),
+		task.WithLocalId(uuid),
+	)
+
+	slog.Debug("Updating remote task", "task", remoteTaskUpdate.Task)
+	err = t.Update(remoteTaskUpdate)
+	if err != nil {
+		return fmt.Errorf("While updating remote task: %w", err)
+	}
+	return nil
+}
+
+func (sp SyncProcess) handleLocalTaskDelete(t task.Task) error {
+	slog.Info("Deleting local task", "uuid", *t.LocalId(), "desc", t.Description())
+	return sp.local.RemoveTask(*t.LocalId())
+}
+func (sp SyncProcess) handleRemoteTaskDelete(t task.Task) error {
+	// slog.Info("Deleting remote task", "uuid", *t.LocalId(), "desc", t.Description())
+	slog.Error("Deleting remote tasks not implemeted")
 	return nil
 }
 
@@ -126,74 +211,109 @@ type processedTasksReturn struct {
 	tasksToUpdate       []taskToUpdate
 }
 
-func processTasks(localTaskMap taskMapType, remoteTaskMap taskMapType) processedTasksReturn {
-	newRemoteTasks := []task.Task{}
-	newLocalTasks := []task.Task{}
+func processTasks(localTasks []tw.Task, remoteTodos []caldav.Todo) processedTasksReturn {
 	localTasksToDelete := []task.Task{}
 	remoteTasksToDelete := []task.Task{}
+	remoteTasksToCreate := []task.Task{}
+	localTasksToCreate := []task.Task{}
 	tasksToUpdate := []taskToUpdate{}
 
-	for _, t := range localTaskMap {
-		if t.RemotePath() == nil {
-			newRemoteTasks = append(newRemoteTasks, t)
-			continue
+	localTaskMap := mapOfLocalTasks(localTasks)
+	remoteTaskMap := mapOfRemoteTasks(remoteTodos)
+
+	// Get remote tasks with no id, these need to be created locally
+	for _, t := range remoteTodos {
+		if t.LocalId() == nil {
+			localTasksToCreate = append(localTasksToCreate, &t)
 		}
+	}
 
-		if remoteTask, exists := remoteTaskMap[*t.RemotePath()]; exists {
-			if t.LastSynced() == nil || remoteTask.LastSynced() == nil {
-				slog.Error("Cant process task with no last synced time", "localtask", t, "remotetask", remoteTask)
-				continue
+	// Get local tasks with no path, these need to be created remotely
+	for _, t := range localTasks {
+		if t.RemotePath() == nil {
+			remoteTasksToCreate = append(remoteTasksToCreate, &t)
+		}
+	}
+
+	// Remove any remote tasks that don't exist locally
+	for _, t := range remoteTodos {
+		if localId := t.LocalId(); localId != nil {
+			if _, existsLocally := localTaskMap[*localId]; !existsLocally {
+				remoteTasksToDelete = append(remoteTasksToDelete, &t)
 			}
-			if t.LastModified().After(*t.LastSynced()) || remoteTask.LastModified().After(*remoteTask.LastSynced()) {
-				latestTask := t
-				if remoteTask.LastModified().After(t.LastModified()) {
-					latestTask = remoteTask
-				}
+		}
+	}
 
+	// Remove any local tasks that have been synced by no longer exist remotely
+	for uuid, t := range localTaskMap {
+		if remotePath := t.RemotePath(); remotePath != nil {
+			if _, existsRemotely := remoteTaskMap[uuid]; !existsRemotely {
+				localTasksToDelete = append(localTasksToDelete, t)
+			}
+		}
+	}
+
+	// Find tasks with changes
+	for uuid, t := range localTaskMap {
+		if remoteTask, remoteTaskExists := remoteTaskMap[uuid]; remoteTaskExists {
+			if !task.Equal(t, remoteTask) {
+				slog.Debug("Tasks are not equal, update required")
+				slog.Debug(task.PrintTask(t))
+				slog.Debug(task.PrintTask(remoteTask))
 				tasksToUpdate = append(tasksToUpdate, taskToUpdate{
 					localTask:   t,
 					remoteTask:  remoteTask,
-					updatedTask: latestTask,
+					updatedTask: getUpdateTask(t, remoteTask),
 				})
 			}
-			continue
-		} else {
-			localTasksToDelete = append(localTasksToDelete, t)
-			continue
-		}
-
-	}
-
-	for _, t := range remoteTaskMap {
-		if t.LocalId() == nil {
-			newLocalTasks = append(newLocalTasks, t)
-			continue
-		}
-		if _, exists := localTaskMap[*t.LocalId()]; !exists {
-			remoteTasksToDelete = append(remoteTasksToDelete, t)
-			continue
 		}
 	}
+
 	return processedTasksReturn{
-		newRemoteTasks:      newRemoteTasks,
-		newLocalTasks:       newLocalTasks,
+		newRemoteTasks:      remoteTasksToCreate,
+		newLocalTasks:       localTasksToCreate,
 		localTasksToDelete:  localTasksToDelete,
 		remoteTasksToDelete: remoteTasksToDelete,
 		tasksToUpdate:       tasksToUpdate,
 	}
 }
 
-func createMapOfLocalTasks(tasks []tw.Task) (taskMap taskMapType) {
-	taskMap = make(taskMapType)
+func getUpdateTask(a task.Task, b task.Task) task.Task {
+	taskToUpdate := a
+	if b.LastModified().After(a.LastModified()) {
+		taskToUpdate = b
+	}
+	return taskToUpdate
+}
+
+func mapOfLocalTasks(tasks []tw.Task) taskMapType {
+	taskMap := make(taskMapType)
 	for _, t := range tasks {
+		if t.LocalId() == nil {
+			continue
+		}
 		taskMap[*t.LocalId()] = &t
 	}
 	return taskMap
 }
-func createMapOfRemoteTasks(tasks []caldav.Todo) (taskMap taskMapType) {
+func mapOfRemoteTasks(tasks []caldav.Todo) taskMapType {
+	taskMap := make(taskMapType)
+	for _, t := range tasks {
+		if t.LocalId() == nil {
+			continue
+		}
+		taskMap[*t.LocalId()] = &t
+	}
+	return taskMap
+}
+
+func createMapOfTasks(tasks []task.Task) (taskMap taskMapType) {
 	taskMap = make(taskMapType)
 	for _, t := range tasks {
-		taskMap[*t.RemotePath()] = &t
+		if t.LocalId() == nil {
+			continue
+		}
+		taskMap[*t.LocalId()] = t
 	}
 	return taskMap
 }

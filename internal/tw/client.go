@@ -3,6 +3,7 @@ package tw
 import (
 	"fmt"
 	"karsai5/tw-caldav/internal/sync/task"
+	"karsai5/tw-caldav/internal/utils/conv"
 	"karsai5/tw-caldav/pkg/taskwarrior"
 	"log/slog"
 	"regexp"
@@ -11,18 +12,21 @@ import (
 	"time"
 )
 
+// TODO: Move this struct into its own file
 type Task struct {
 	task taskwarrior.Task
 }
 
-// Update implements task.Task.
-func (*Task) Update(t task.Task) error {
-	panic("unimplemented")
-}
-
 // Status implements task.Task.
 func (t *Task) Status() task.Status {
-	panic("unimplemented")
+	switch t.task.Status {
+	case "completed":
+		return task.StatusComplete
+	case "deleted":
+		return task.StatusDeleted
+	default:
+		return task.StatusPending
+	}
 }
 
 // Description implements task.Task.
@@ -33,6 +37,11 @@ func (t *Task) Description() string {
 // Due implements task.Task.
 func (t *Task) Due() *time.Time {
 	return t.task.Due
+}
+
+func (t *Task) Delete() error {
+	// TODO: Implement
+	return fmt.Errorf("Not implemented")
 }
 
 // LastModified implements task.Task.
@@ -84,6 +93,21 @@ func (t *Task) Tags() []string {
 	return t.task.Tags
 }
 
+// Update implements task.Task.
+func (*Task) Update(t task.Task) error {
+	modCmdOpts := append(
+		[]string{fmt.Sprintf("uuid:%s", *t.LocalId()), "mod"},
+		createCmdOptionsForMetadata(t)...,
+	)
+
+	out, err := taskwarrior.Run(modCmdOpts...)
+	if err != nil {
+		return fmt.Errorf("While updating local task: %s: %w", string(out), err)
+	}
+
+	return nil
+}
+
 type Taskwarrior struct {
 }
 
@@ -103,8 +127,12 @@ func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
 }
 
 func (tw *Taskwarrior) AddTask(t task.Task) (uuid string, err error) {
+	addCmdOpts := append([]string{
+		"add",
+		t.Description(),
+	}, createCmdOptionsForMetadata(t)...)
 
-	out, err := taskwarrior.Run(createAddTaskCmdOptions(t)...)
+	out, err := taskwarrior.Run(addCmdOpts...)
 	if err != nil {
 		return "", fmt.Errorf("While adding task: %w", err)
 	}
@@ -126,34 +154,27 @@ func (tw *Taskwarrior) AddTask(t task.Task) (uuid string, err error) {
 	return uuid, err
 }
 
-func createAddTaskCmdOptions(t task.Task) []string {
+func createCmdOptionsForMetadata(t task.Task) []string {
 	opts := []string{
-		"add",
-		t.Description(),
+		fmt.Sprintf("description:%q", t.Description()),
+		fmt.Sprintf("remotepath:%q", conv.SafeStringPtr(t.RemotePath())),
+		fmt.Sprintf("project:%q", escapeQuotes(t.Project())),
+		fmt.Sprintf("priority:%s", t.Priority().String()),
 	}
-	if t.LastSynced() != nil {
-		opts = append(opts, fmt.Sprintf("lastsync:%s", t.LastSynced().Format(taskwarrior.TimeLayout)))
-	}
-	if t.RemotePath() != nil {
-		opts = append(opts, fmt.Sprintf("remotepath:%q", *t.RemotePath()))
-	}
-	if t.Project() != "" {
-		opts = append(opts, fmt.Sprintf("project:%q", escapeQuotes(t.Project())))
-	}
+
 	if t.Due() != nil {
-		opts = append(opts, fmt.Sprintf("due:%s", t.Due()))
+		opts = append(opts, fmt.Sprintf("due:%s", t.Due().Format(taskwarrior.TimeLayout)))
 	}
-	if t.Priority() != task.PriorityUnset {
-		opts = append(opts, fmt.Sprintf("pririty:%s", t.Priority().String()))
-	}
+
+	safeTags := []string{}
 	for _, tag := range t.Tags() {
 		if strings.Contains(tag, " ") {
 			slog.Error("Cannot add tag with spaces", "tag", tag)
 			continue
 		}
-		opts = append(opts, fmt.Sprintf("+%s", tag))
+		safeTags = append(safeTags, tag)
 	}
-
+	opts = append(opts, fmt.Sprintf("tags:'%s'", strings.Join(t.Tags(), ",")))
 	return opts
 }
 

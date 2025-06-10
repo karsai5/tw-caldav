@@ -9,29 +9,15 @@ type Task interface {
 	Priority() Priority
 	Tags() []string
 	LastModified() time.Time
-	LastSynced() *time.Time
 
 	RemotePath() *string
 	LocalId() *string
 
 	Status() Status
 	Update(t Task) error
+	Delete() error
 }
 
-type Status int8
-
-func (s Status) String() string {
-	switch s {
-	case StatusComplete:
-		return "complete"
-	case StatusPending:
-		return "pending"
-	case StatusDeleted:
-		return "deleted"
-	default:
-		return ""
-	}
-}
 
 type Priority int8
 
@@ -55,9 +41,24 @@ const (
 	PriorityHigh            = 1
 )
 
+type Status int8
+
 const (
 	StatusUnset Status = iota
 	StatusComplete
 	StatusPending
 	StatusDeleted
 )
+
+func (s Status) String() string {
+	switch s {
+	case StatusComplete:
+		return "complete"
+	case StatusPending:
+		return "pending"
+	case StatusDeleted:
+		return "deleted"
+	default:
+		return ""
+	}
+}

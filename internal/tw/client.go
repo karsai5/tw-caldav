@@ -12,107 +12,7 @@ import (
 	"time"
 )
 
-// TODO: Move this struct into its own file
-type Task struct {
-	task taskwarrior.Task
-}
-
-// Status implements task.Task.
-func (t *Task) Status() task.Status {
-	switch t.task.Status {
-	case "completed":
-		return task.StatusComplete
-	case "deleted":
-		return task.StatusDeleted
-	default:
-		return task.StatusPending
-	}
-}
-
-// Description implements task.Task.
-func (t *Task) Description() string {
-	return t.task.Description
-}
-
-// Due implements task.Task.
-func (t *Task) Due() *time.Time {
-	return t.task.Due
-}
-
-func (t *Task) Delete() error {
-	// TODO: Implement
-	return fmt.Errorf("Not implemented")
-}
-
-// LastModified implements task.Task.
-func (t *Task) LastModified() time.Time {
-	return t.task.Modified
-}
-
-// LastSynced implements task.Task.
-func (t *Task) LastSynced() *time.Time {
-	return t.task.LastSync
-}
-
-// LocalId implements task.Task.
-func (t *Task) LocalId() *string {
-	return &t.task.UUID
-}
-
-// Priority implements task.Task.
-func (t *Task) Priority() task.Priority {
-
-	switch t.task.Priority {
-	case "H":
-		return task.PriorityHigh
-	case "M":
-		return task.PriorityMedium
-	case "L":
-		return task.PriorityLow
-	default:
-		return task.PriorityUnset
-	}
-
-}
-
-// Project implements task.Task.
-func (t *Task) Project() string {
-	return t.task.Project
-}
-
-// RemotePath implements task.Task.
-func (t *Task) RemotePath() *string {
-	if t.task.RemotePath == "" {
-		return nil
-	}
-	return &t.task.RemotePath
-}
-
-// Tags implements task.Task.
-func (t *Task) Tags() []string {
-	return t.task.Tags
-}
-
-// Update implements task.Task.
-func (*Task) Update(t task.Task) error {
-	modCmdOpts := append(
-		[]string{fmt.Sprintf("uuid:%s", *t.LocalId()), "mod"},
-		createCmdOptionsForMetadata(t)...,
-	)
-
-	out, err := taskwarrior.Run(modCmdOpts...)
-	if err != nil {
-		return fmt.Errorf("While updating local task: %s: %w", string(out), err)
-	}
-
-	return nil
-}
-
 type Taskwarrior struct {
-}
-
-func escapeQuotes(str string) string {
-	return strings.ReplaceAll(str, `"`, `\"`)
 }
 
 func (t *Taskwarrior) GetAllTasks() (tasks []Task, err error) {
@@ -163,7 +63,8 @@ func createCmdOptionsForMetadata(t task.Task) []string {
 	}
 
 	if t.Due() != nil {
-		opts = append(opts, fmt.Sprintf("due:%s", t.Due().Format(taskwarrior.TimeLayout)))
+		slog.Debug("time", "t", t.Due().String())
+		opts = append(opts, fmt.Sprintf("due:%s", t.Due().Format(time.RFC3339)))
 	}
 
 	safeTags := []string{}
@@ -178,19 +79,13 @@ func createCmdOptionsForMetadata(t task.Task) []string {
 	return opts
 }
 
-func (t *Taskwarrior) RemoveTask(uuid string) error {
-	if uuid == "" {
-		return fmt.Errorf("UUID must be set")
-	}
-	out, err := taskwarrior.Run("rc.confirmation=off", fmt.Sprintf("uuid:%s", uuid), "delete")
-	if err != nil {
-		return fmt.Errorf("Error deleting task: %s: %w", out, err)
-	}
-	return nil
-}
-
 func extractNumber(s string) (int, error) {
 	re := regexp.MustCompile(`\d+`)
 	numStr := re.FindString(s)
 	return strconv.Atoi(numStr)
 }
+
+func escapeQuotes(str string) string {
+	return strings.ReplaceAll(str, `"`, `\"`)
+}
+

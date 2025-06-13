@@ -80,7 +80,7 @@ func (sp SyncProcess) Sync() error {
 			tasks = append(tasks, ttu.updatedTask)
 		}
 		if sp.Interactive {
-			fmt.Println("Would you like to udpate tasks?")
+			fmt.Println("Would you like to update tasks?")
 			PrintTable(tasks)
 			if yesNo() {
 				updateTasks()
@@ -129,15 +129,19 @@ func printTasks(tasks []task.Task, msg string) {
 
 func (sp SyncProcess) handleTaskUpdate(ttu taskToUpdate) error {
 	slog.Info("Updating task", "task", ttu.updatedTask.Description(), "path", *ttu.updatedTask.RemotePath(), "uuid", *ttu.updatedTask.LocalId())
-	err := ttu.localTask.Update(ttu.updatedTask)
+
+	updatedTask, err := ttu.remoteTask.Update(ttu.updatedTask)
+	if err != nil {
+		return fmt.Errorf("While updating remote task: %w", err)
+	}
+
+	_, err = ttu.localTask.Update(updatedTask)
 	if err != nil {
 		return fmt.Errorf("While updating local task: %w", err)
 	}
 
-	err = ttu.remoteTask.Update(ttu.updatedTask)
-	if err != nil {
-		return fmt.Errorf("While updating remote task: %w", err)
-	}
+	// TODO: Check that both tasks were updated correctly
+
 	return nil
 }
 
@@ -154,7 +158,7 @@ func (sp SyncProcess) handleRemoteTaskCreate(lt task.Task) error {
 		task.WithRemotePath(finalPath),
 	)
 
-	err = lt.Update(localTaskUpdate)
+	_, err = lt.Update(localTaskUpdate)
 	if err != nil {
 		return err
 	}
@@ -178,7 +182,7 @@ func (sp SyncProcess) handleLocalTaskCreate(t task.Task) error {
 	)
 
 	slog.Debug("Updating remote task", "task", remoteTaskUpdate.Task)
-	err = t.Update(remoteTaskUpdate)
+	_, err = t.Update(remoteTaskUpdate)
 	if err != nil {
 		return fmt.Errorf("While updating remote task: %w", err)
 	}
@@ -187,12 +191,12 @@ func (sp SyncProcess) handleLocalTaskCreate(t task.Task) error {
 
 func (sp SyncProcess) handleLocalTaskDelete(t task.Task) error {
 	slog.Info("Deleting local task", "uuid", *t.LocalId(), "desc", t.Description())
-	return sp.local.RemoveTask(*t.LocalId())
+	return t.Delete()
 }
+
 func (sp SyncProcess) handleRemoteTaskDelete(t task.Task) error {
-	// slog.Info("Deleting remote task", "uuid", *t.LocalId(), "desc", t.Description())
-	slog.Error("Deleting remote tasks not implemeted")
-	return nil
+	slog.Info("Deleting remote task", "uuid", *t.LocalId(), "desc", t.Description())
+	return t.Delete()
 }
 
 type taskMapType map[string]task.Task
@@ -236,19 +240,19 @@ func processTasks(localTasks []tw.Task, remoteTodos []caldav.Todo) processedTask
 	}
 
 	// Remove any remote tasks that don't exist locally
-	for _, t := range remoteTodos {
-		if localId := t.LocalId(); localId != nil {
-			if _, existsLocally := localTaskMap[*localId]; !existsLocally {
-				remoteTasksToDelete = append(remoteTasksToDelete, &t)
-			}
+	for uuid, t := range remoteTaskMap {
+		if _, existsLocally := localTaskMap[uuid]; !existsLocally {
+			remoteTasksToDelete = append(remoteTasksToDelete, t)
+			delete(remoteTaskMap, uuid)
 		}
 	}
 
-	// Remove any local tasks that have been synced by no longer exist remotely
+	// Remove any local tasks that have been synced but no longer exist remotely
 	for uuid, t := range localTaskMap {
 		if remotePath := t.RemotePath(); remotePath != nil {
 			if _, existsRemotely := remoteTaskMap[uuid]; !existsRemotely {
 				localTasksToDelete = append(localTasksToDelete, t)
+				delete(localTaskMap, uuid)
 			}
 		}
 	}
@@ -258,8 +262,8 @@ func processTasks(localTasks []tw.Task, remoteTodos []caldav.Todo) processedTask
 		if remoteTask, remoteTaskExists := remoteTaskMap[uuid]; remoteTaskExists {
 			if !task.Equal(t, remoteTask) {
 				slog.Debug("Tasks are not equal, update required")
-				slog.Debug(task.PrintTask(t))
-				slog.Debug(task.PrintTask(remoteTask))
+				slog.Debug("local", "task", task.PrintTask(t))
+				slog.Debug("remot", "task", task.PrintTask(remoteTask))
 				tasksToUpdate = append(tasksToUpdate, taskToUpdate{
 					localTask:   t,
 					remoteTask:  remoteTask,

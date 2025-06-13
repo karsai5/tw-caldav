@@ -7,6 +7,7 @@ import (
 	"karsai5/tw-caldav/internal/sync/task"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -92,6 +93,15 @@ func (cd *CalDavService) CreateDefaultCalendarIfDoesNotExist() error {
 	slog.Info("Default calendar created remotely")
 
 	return nil
+}
+
+func (cd *CalDavService) FindOrCreateCalendar(name string) (path string, err error) {
+	path, exists := cd.Calendars[name]
+	if exists {
+		return path, nil
+	}
+	
+	return cd.CreateCalendar(name, name)
 }
 
 func (cd *CalDavService) CreateCalendar(path, name string) (finalPath string, err error) {
@@ -288,15 +298,23 @@ func (cd *CalDavService) mapTodo(cal *caldav.Calendar, calObj *caldav.CalendarOb
 		return nil, fmt.Errorf("calObj can't be nil")
 	}
 
-	if len(calObj.Data.Children) > 1 {
-		return nil, fmt.Errorf("Incorrect number of children for calObj, should be 1, found %d", len(calObj.Data.Children))
+
+	vTodoIndex := slices.IndexFunc(calObj.Data.Children, func(child *ical.Component) bool {
+		if child.Name == "VTODO" {
+			return true;
+		}
+		return false
+	})
+
+	if vTodoIndex < 0 {
+		return nil, fmt.Errorf("Could not find VTODO in calObj")
 	}
 
 	todo := Todo{
 		calDavService:  cd,
 		Calendar:       cal,
 		CalendarObject: calObj,
-		TodoComponent:  calObj.Data.Children[0],
+		TodoComponent:  calObj.Data.Children[vTodoIndex],
 		Path:           calObj.Path,
 	}
 

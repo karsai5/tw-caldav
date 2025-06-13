@@ -14,7 +14,7 @@ type Task interface {
 	LocalId() *string
 
 	Status() Status
-	Update(t Task) error
+	Update(t Task) (Task, error)
 	Delete() error
 }
 

@@ -112,8 +112,8 @@ func (s ShellTask) Tags() []string {
 }
 
 // Update implements Task.
-func (s ShellTask) Update(t Task) error {
-	return errors.New("Update not possible on a shell task")
+func (s ShellTask) Update(t Task) (Task, error) {
+	return nil, errors.New("Update not possible on a shell task")
 }
 
 func (s ShellTask) Delete() error {

@@ -24,8 +24,39 @@ type Todo struct {
 }
 
 // Update implements task.Task.
-func (t *Todo) Update(u task.Task) error {
+func (t *Todo) Update(u task.Task) (task.Task, error) {
 	// TODO: Handle project change
+
+	if t.Project() != u.Project() {
+		currentFolderPath, fileName := getpathAndFilename(t.Path)
+		newDirPath, err := t.calDavService.FindOrCreateCalendar(u.Project())
+		if err != nil {
+			return nil, err
+		}
+		newPath := newDirPath + fileName
+		slog.Debug("Moving ical", "oldPath", currentFolderPath, "newPath", newPath)
+		err = t.calDavService.Client.Move(context.TODO(), t.Path, newPath, nil)
+		if err != nil {
+			return nil, fmt.Errorf("While moving task to new calendar: %w", err)
+		}
+		return task.CreateShellTask(task.WithTask(u), task.WithRemotePath(newPath)), nil
+	}
+
+	// NOTE: Option to delete and create task instead
+
+	// if t.Project() != u.Project() {
+	// 	err := t.Delete()
+	// 	if err != nil {
+	// 		return u, fmt.Errorf("While deleting task to move project: %w", err)
+	// 	}
+	//
+	// 	path, err := t.calDavService.CreateNewTodo(u)
+	// 	if err != nil {
+	// 		return u, fmt.Errorf("While creating new task to move project: %w", err)
+	// 	}
+	//
+	// 	return task.CreateShellTask(task.WithTask(u), task.WithRemotePath(path)), nil
+	// }
 
 	updatePropsWithInformationFromTask(&t.TodoComponent.Props, u)
 
@@ -35,8 +66,19 @@ func (t *Todo) Update(u task.Task) error {
 	slog.Debug("Updating caldav ical", "path", t.Path, "ical", buf.String())
 
 	_, err := t.calDavService.Client.PutCalendarObject(context.TODO(), t.Path, t.CalendarObject.Data)
+	if err != nil {
+		return u, err
+	}
+	return u, err
 
-	return err
+}
+
+func getpathAndFilename(s string) (string, string) {
+	idx := strings.LastIndex(s, "/")
+	if idx == -1 {
+		return s, ""
+	}
+	return s[:idx] + "/", s[idx+1:]
 }
 
 // Status implements task.Task.
@@ -51,7 +93,7 @@ func (t *Todo) Status() task.Status {
 	case "CANCELLED":
 		return task.StatusDeleted
 	default:
-		return task.StatusUnset
+		return task.StatusPending
 	}
 }
 
@@ -144,6 +186,5 @@ func (t *Todo) GetStringProp(key string) string {
 }
 
 func (t *Todo) Delete() error {
-	// TODO: implement
-	return fmt.Errorf("Not implemented")
+	return t.calDavService.Client.RemoveAll(context.TODO(), t.Path)
 }

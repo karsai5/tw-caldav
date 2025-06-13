@@ -9,6 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var syncCmdInteractiveFlag bool
+// TODO: Add command option to backup tasks before syncing
+var syncCmdBackupTasksFlag bool
+
 // syncCmd represents the sync command
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -24,7 +28,8 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			panic(err)
 		}
-		syncProcess.Interactive = true
+
+		syncProcess.Interactive = syncCmdInteractiveFlag
 
 		if err = syncProcess.Sync(); err != nil {
 			panic(err)
@@ -33,5 +38,7 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
+	syncCmd.Flags().BoolVarP(&syncCmdInteractiveFlag,"interactive", "i", false, "Ask before making any changes")
+	syncCmd.Flags().BoolVarP(&syncCmdBackupTasksFlag,"backup", "b", false, "Backup local tasks before making changes")
 	rootCmd.AddCommand(syncCmd)
 }

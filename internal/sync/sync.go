@@ -140,9 +140,33 @@ func (sp SyncProcess) handleTaskUpdate(ttu taskToUpdate) error {
 		return fmt.Errorf("While updating local task: %w", err)
 	}
 
-	// TODO: Check that both tasks were updated correctly
+	if equal, err := sp.AreTasksEqual(ttu.localTask, updatedTask); equal == false {
+		if err != nil {
+			return fmt.Errorf("While checking tasks were updated correctly: %w", err)
+		}
+		return fmt.Errorf("Tasks were not updated correctly, still appear to be unequal")
+	}
 
 	return nil
+}
+
+func (sp SyncProcess) AreTasksEqual(localTask task.Task, remoteTask task.Task) (bool, error) {
+	currentLocalTask, err := sp.local.GetTask(*localTask.LocalId())
+	if err != nil {
+		return false, err
+	}
+	currentRemoteTask, err := sp.remote.GetTodo(remoteTask.Project(), *remoteTask.RemotePath())
+	if err != nil {
+		return false, err
+	}
+
+	equal := task.Equal(&currentLocalTask, &currentRemoteTask)
+	if !equal {
+		slog.Debug("local", "task", task.PrintTask(&currentLocalTask))
+		slog.Debug("remot", "task", task.PrintTask(&currentRemoteTask))
+	}
+
+	return equal, nil
 }
 
 func (sp SyncProcess) handleRemoteTaskCreate(lt task.Task) error {

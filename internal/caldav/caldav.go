@@ -45,7 +45,7 @@ func NewClient(path string, username string, pass string) (*CalDavService, error
 	return &cd, nil
 }
 
-type CalendarNameToPathMap map[string]string
+type CalendarNameToPathMap map[string]caldav.Calendar
 
 type CalDavService struct {
 	Client    *caldav.Client
@@ -75,9 +75,8 @@ func (cd *CalDavService) PopulateCalendarMap() error {
 		if existingCalendar, exists := cd.Calendars[c.Name]; exists {
 			return fmt.Errorf("Two calendars found with the same name '%s' %s %s", c.Name, existingCalendar, c.Path)
 		}
-		cd.Calendars[c.Name] = c.Path
+		cd.Calendars[c.Name] = c
 	}
-	slog.Debug("calendarMap", "map", cd.Calendars)
 	return nil
 }
 
@@ -95,12 +94,12 @@ func (cd *CalDavService) CreateDefaultCalendarIfDoesNotExist() error {
 	return nil
 }
 
-func (cd *CalDavService) FindOrCreateCalendar(name string) (path string, err error) {
-	path, exists := cd.Calendars[name]
+func (cd *CalDavService) FindOrCreateCalendar(name string) (calendar string, err error) {
+	cal, exists := cd.Calendars[name]
 	if exists {
-		return path, nil
+		return cal.Path, nil
 	}
-	
+
 	return cd.CreateCalendar(name, name)
 }
 
@@ -147,7 +146,7 @@ func (cd *CalDavService) CreateCalendar(path, name string) (finalPath string, er
 		return "", err
 	}
 
-	return cd.Calendars[name], nil
+	return cd.Calendars[name].Path, nil
 }
 
 func (cd *CalDavService) CreateNewTodo(t task.Task) (finalPath string, err error) {
@@ -157,9 +156,12 @@ func (cd *CalDavService) CreateNewTodo(t task.Task) (finalPath string, err error
 		taskCalendar = DEFAULT_CALENDAR
 	}
 
-	calendarPath, exists := cd.Calendars[taskCalendar]
+	foundCalendar, exists := cd.Calendars[taskCalendar]
+	calendarPath := ""
 
-	if !exists {
+	if exists {
+		calendarPath = foundCalendar.Path
+	} else {
 		path, err := cd.CreateCalendar(t.Project(), t.Project())
 		if err != nil {
 			return finalPath, err
@@ -209,10 +211,15 @@ func updatePropsWithInformationFromTask(props *ical.Props, t task.Task) {
 	if t.Due() != nil {
 		addTimeProp(props, "DUE", *t.Due())
 		addTimeProp(props, "DTSTART", *t.Due())
+	} else {
+		props.Del("DUE")
+		props.Del("DTSTART")
 	}
 
 	if t.Priority() != task.PriorityUnset {
 		addStringProp(props, "PRIORITY", fmt.Sprintf("%d", t.Priority()))
+	} else {
+		props.Del("PRIORITY")
 	}
 
 	if t.LocalId() != nil {
@@ -220,7 +227,13 @@ func updatePropsWithInformationFromTask(props *ical.Props, t task.Task) {
 	}
 
 	if len(t.Tags()) > 0 {
-		addStringProp(props, "CATEGORIES", strings.Join(t.Tags(), ","))
+		tmpProps := *props
+		tmpProps["CATEGORIES"] = []ical.Prop{
+			{
+				Name:  "CATEGORIES",
+				Value: strings.Join(t.Tags(), ","),
+			},
+		}
 	}
 
 	desc := fmt.Sprintf("taskwarrior_id=%s", *t.LocalId())
@@ -235,7 +248,7 @@ func updatePropsWithInformationFromTask(props *ical.Props, t task.Task) {
 func statusToCalDavStatus(s task.Status) string {
 	switch s {
 	case task.StatusComplete:
-		return "COMPLETE"
+		return "COMPLETED"
 	case task.StatusDeleted:
 		return "CANCELLED"
 	default:
@@ -278,6 +291,34 @@ func (cd *CalDavService) GetAllTodos() (todos []Todo, err error) {
 	return todos, nil
 }
 
+func (cd *CalDavService) GetTodo(project string, icalPath string) (Todo, error) {
+	// path, _ := getpathAndFilename(icalPath)
+	// path = path[:len(path)-1]
+	//
+	// slog.Debug("test", "calendar", cd.Calendars, "path", path)
+
+	if project == "" {
+		project = "default"
+	}
+
+	calendar, exists := cd.Calendars[project]
+	if !exists {
+		return Todo{}, fmt.Errorf("No calendar found for %q", project)
+	}
+
+	calObj, err := cd.Client.GetCalendarObject(context.TODO(), icalPath)
+	if err != nil {
+		return Todo{}, fmt.Errorf("While getting calendar object: %w", err)
+	}
+
+	todo, err := cd.mapTodo(&calendar, calObj)
+	if err != nil {
+		return Todo{}, fmt.Errorf("While mapping todo: %w", err)
+	}
+
+	return *todo, nil
+}
+
 func (cd *CalDavService) GetTodosForCalendar(calendarPath string) ([]caldav.CalendarObject, error) {
 	query := &caldav.CalendarQuery{
 		CompRequest: caldav.CalendarCompRequest{Name: "VCALENDAR", AllProps: true, AllComps: true},
@@ -298,10 +339,9 @@ func (cd *CalDavService) mapTodo(cal *caldav.Calendar, calObj *caldav.CalendarOb
 		return nil, fmt.Errorf("calObj can't be nil")
 	}
 
-
 	vTodoIndex := slices.IndexFunc(calObj.Data.Children, func(child *ical.Component) bool {
 		if child.Name == "VTODO" {
-			return true;
+			return true
 		}
 		return false
 	})

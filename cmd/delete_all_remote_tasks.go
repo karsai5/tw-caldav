@@ -29,9 +29,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// testCmd represents the test command
-var testCmd = &cobra.Command{
-	Use:   "test",
+// deleteAllRemoteTasks represents the test command
+var deleteAllRemoteTasks = &cobra.Command{
+	Use:   "delete-all-remote-tasks",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -40,10 +40,23 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		slog.Debug("Login details", "url", viper.GetString("url"), "user", viper.GetString("user"), "pass", viper.GetString("pass"))
-		_, err := caldav.NewClient(viper.GetString("url"), viper.GetString("user"), viper.GetString("pass"))
+		client, err := caldav.NewClient(viper.GetString("url"), viper.GetString("user"), viper.GetString("pass"))
 		if err != nil {
 			panic(err)
+		}
+
+		todos, err := client.GetAllTodos()
+		if err != nil {
+			panic(err)
+		}
+
+		for _, t := range todos {
+			err := t.Delete()
+			if err != nil {
+				slog.Error("Error deleting task", "err", err)
+			} else {
+				slog.Info("Task deleted", "task", t.Description(), "path", *t.RemotePath())
+			}
 		}
 
 		// err = remote.CreateCalendar("/hello6", "Test")
@@ -56,15 +69,15 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	rootCmd.AddCommand(testCmd)
+	rootCmd.AddCommand(deleteAllRemoteTasks)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// testCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// deleteAllRemoteTasks.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// testCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// deleteAllRemoteTasks.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

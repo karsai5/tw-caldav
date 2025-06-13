@@ -24,7 +24,7 @@ func PrintTask(t Task) string {
 		fmt.Sprintf("status:%s", t.Status().String()),
 	}
 	if t.Due() != nil {
-		parts = append(parts, fmt.Sprintf("due:%s", t.Due().String()))
+		parts = append(parts, fmt.Sprintf("due:%s", t.Due().UTC().String()))
 	}
 	if t.RemotePath() != nil {
 		parts = append(parts, fmt.Sprintf("remote:%s", *t.RemotePath()))

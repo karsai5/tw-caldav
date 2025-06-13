@@ -25,8 +25,6 @@ type Todo struct {
 
 // Update implements task.Task.
 func (t *Todo) Update(u task.Task) (task.Task, error) {
-	// TODO: Handle project change
-
 	if t.Project() != u.Project() {
 		currentFolderPath, fileName := getpathAndFilename(t.Path)
 		newDirPath, err := t.calDavService.FindOrCreateCalendar(u.Project())

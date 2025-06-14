@@ -1,4 +1,4 @@
-module karsai5/tw-caldav
+module github.com/karsai5/tw-caldav
 
 go 1.24.1
 

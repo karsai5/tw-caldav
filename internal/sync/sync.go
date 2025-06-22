@@ -2,11 +2,12 @@ package sync
 
 import (
 	"fmt"
-	"karsai5/tw-caldav/internal/caldav"
-	"karsai5/tw-caldav/internal/sync/task"
-	"karsai5/tw-caldav/internal/tw"
 	"log/slog"
 	"time"
+
+	"github.com/karsai5/tw-caldav/internal/caldav"
+	"github.com/karsai5/tw-caldav/internal/sync/task"
+	"github.com/karsai5/tw-caldav/internal/tw"
 
 	"github.com/spf13/viper"
 )

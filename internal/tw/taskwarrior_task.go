@@ -2,9 +2,10 @@ package tw
 
 import (
 	"fmt"
-	"karsai5/tw-caldav/internal/sync/task"
-	"karsai5/tw-caldav/pkg/taskwarrior"
 	"time"
+
+	"github.com/karsai5/tw-caldav/internal/sync/task"
+	"github.com/karsai5/tw-caldav/pkg/taskwarrior"
 )
 
 type Task struct {
@@ -104,4 +105,3 @@ func (t *Task) Update(u task.Task) (task.Task, error) {
 
 	return u, nil
 }
-

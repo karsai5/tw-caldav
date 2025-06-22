@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"karsai5/tw-caldav/internal/sync/task"
 	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/karsai5/tw-caldav/internal/sync/task"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"

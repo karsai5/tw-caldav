@@ -22,8 +22,9 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"karsai5/tw-caldav/internal/caldav"
 	"log/slog"
+
+	"github.com/karsai5/tw-caldav/internal/caldav"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

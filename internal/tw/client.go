@@ -2,20 +2,21 @@ package tw
 
 import (
 	"fmt"
-	"karsai5/tw-caldav/internal/sync/task"
-	"karsai5/tw-caldav/internal/utils/conv"
-	"karsai5/tw-caldav/pkg/taskwarrior"
 	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/karsai5/tw-caldav/internal/sync/task"
+	"github.com/karsai5/tw-caldav/internal/utils/conv"
+	"github.com/karsai5/tw-caldav/pkg/taskwarrior"
 )
 
 type Taskwarrior struct {
 }
 
-func (tw *Taskwarrior) GetTask(uuid string ) (Task, error) {
+func (tw *Taskwarrior) GetTask(uuid string) (Task, error) {
 	rawTasks, err := taskwarrior.List(fmt.Sprintf("uuid:%s", uuid))
 	if err != nil {
 		return Task{}, fmt.Errorf("While getting tasks from taskwarrior: %w", err)

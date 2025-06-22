@@ -1,10 +1,11 @@
 package sync
 
 import (
-	"karsai5/tw-caldav/internal/sync/task"
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/karsai5/tw-caldav/internal/sync/task"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
